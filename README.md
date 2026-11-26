@@ -37,6 +37,32 @@ instalar nada. Para ter um link público, ative o GitHub Pages do repositório.
 4. **Exporte.** *Exportar vídeo* gera um MP4 (H.264) no formato escolhido
    (9:16, 16:9, 1:1, 4:5 ou 4:3). *Exportar quadro atual* gera um PNG.
 
+### Cena a partir de uma imagem
+
+O botão **Cena por imagem** monta a maquete de blocos a partir de um render ou
+de uma foto, já com a câmera no ponto de vista da imagem.
+
+- **Com IA embutida** (na versão publicada no Claude): escolha a imagem e
+  clique em *Montar cena com IA*.
+- **Com qualquer outra IA**: clique em *Copiar prompt*, envie o prompt junto
+  com a imagem, e cole de volta o JSON que ela responder.
+
+A imagem fica por cima do quadro, com opacidade ajustável, para conferir o
+enquadramento. O formato do JSON é este:
+
+```json
+{
+  "objects": [
+    {"type": "box", "name": "Térreo", "pos": [0, 0, 0], "size": [12, 3, 8], "rotY": 0, "color": "#4a4a4d"}
+  ],
+  "camera": {"pos": [-8, 1.6, 20], "target": [0, 3, 0], "focal": 24}
+}
+```
+
+Medidas em metros, Y para cima. `pos` é o centro da base do objeto e `size` é
+largura, altura e profundidade. Tipos aceitos: `box`, `cylinder`, `sphere`,
+`ramp`, `roof`, `tree`, `person` e `car`.
+
 ### Do bloco ao vídeo realista
 
 1. Exporte o PNG do primeiro quadro e gere a imagem realista dele em uma IA de

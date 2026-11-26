@@ -137,6 +137,21 @@ input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);
 .tl-opts input,.tl-opts select{width:auto;color:var(--fg)}
 .tl-opts input[type=number]{width:62px}
 
+.frame .ref{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45}
+.modal{position:fixed;inset:0;z-index:20;background:var(--mask);display:grid;place-items:center;overflow-y:auto;padding-block:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.modal-card{width:min(580px,100%);display:flex;flex-direction:column;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-head h2{font-size:17px;font-weight:600}
+.ai-pick{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.ai-pick img{width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.ai-pick .col{display:flex;flex-direction:column;gap:8px;flex:1;min-width:200px;align-items:flex-start}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted)}
+.check input{margin-top:2px;accent-color:var(--accent)}
+.modal details{border-top:1px solid var(--line);padding-top:10px}
+.modal summary{cursor:pointer;font-weight:600}
+.modal .steps{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.modal textarea{width:100%;min-width:0;resize:vertical;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);border-radius:6px;padding:8px;font:12px/1.45 var(--font-data)}
 @media (max-width:900px){
   html,body{height:auto}
   .app{height:auto;display:flex;flex-direction:column}
@@ -165,6 +180,7 @@ input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);
       <button class="btn" id="btnRedo" title="Refazer (Ctrl+Shift+Z)">Refazer</button>
       <button class="btn" id="btnNew">Cena vazia</button>
       <button class="btn" id="btnSample">Cena de exemplo</button>
+      <button class="btn" id="btnAI" title="Monta a cena em blocos a partir de um render ou foto">Cena por imagem</button>
       <button class="btn" id="btnOpen">Abrir cena</button>
       <button class="btn" id="btnSave">Salvar cena</button>
     </div>
@@ -191,7 +207,7 @@ input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);
 
     <section class="stage" id="stage" aria-label="Cena 3D">
       <canvas id="gl"></canvas>
-      <div class="frame" id="frame"><span class="frame-tag" id="frameTag"></span></div>
+      <div class="frame" id="frame"><img class="ref" id="refImg" alt="" hidden><span class="frame-tag" id="frameTag"></span></div>
       <div class="tools" role="toolbar" aria-label="Ferramenta">
         <button class="btn on" data-mode="translate" title="Mover (G)">Mover</button>
         <button class="btn" data-mode="rotate" title="Girar (E)">Girar</button>
@@ -259,6 +275,9 @@ input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);
         <div class="field"><span>Altura (m)</span><div class="with-num" style="grid-template-columns:minmax(0,1fr) auto">
           <input type="number" id="nHeight" step="0.1" aria-label="Altura da câmera">
           <button class="btn" id="btnEye" title="Altura dos olhos de uma pessoa em pé">Olho 1,60</button></div></div>
+        <div class="field" id="refRow" hidden><span>Referência</span><div class="with-num" style="grid-template-columns:minmax(0,1fr) auto">
+          <input type="range" id="rRef" min="0" max="100" step="5" value="45" aria-label="Opacidade da imagem de referência">
+          <button class="btn" id="btnRefOff">Remover</button></div></div>
         <span class="label" style="margin-top:4px">Movimentos prontos</span>
         <div class="moves">
           <button class="btn" data-move="dollyIn">Avançar</button><button class="btn" data-move="dollyOut">Recuar</button>
@@ -301,6 +320,38 @@ input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);
     </div>
   </footer>
 </div>
+<div class="modal" id="aiModal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+    <div class="modal-head"><h2 id="aiTitle">Cena a partir de uma imagem</h2><button class="btn" id="aiClose">Fechar</button></div>
+    <p class="hint">Envie o render ou a foto de referência. A IA descreve a cena em blocos e a ferramenta monta em 3D, com a câmera no ponto de vista da imagem. Depois é só ajustar e gravar o movimento.</p>
+    <div class="ai-pick">
+      <img id="aiThumb" alt="" hidden>
+      <div class="col">
+        <button class="btn" id="aiChoose">Escolher imagem</button>
+        <label class="check"><input type="checkbox" id="aiUseRef" checked> Mostrar a imagem por cima do quadro, para conferir o enquadramento</label>
+      </div>
+    </div>
+    <div id="aiAuto" hidden>
+      <div class="row">
+        <button class="btn primary" id="aiRun" disabled>Montar cena com IA</button>
+        <button class="btn" id="aiStop" hidden>Parar</button>
+      </div>
+    </div>
+    <p class="hint" id="aiStatus" role="status" aria-live="polite"></p>
+    <details id="aiManual" open>
+      <summary>Usar outra IA: copiar e colar</summary>
+      <div class="steps">
+        <p class="hint">1. Copie o prompt e envie para a IA junto com a imagem.</p>
+        <div class="row"><button class="btn" id="aiCopy">Copiar prompt</button></div>
+        <textarea id="aiPrompt" rows="4" readonly aria-label="Prompt para a IA"></textarea>
+        <p class="hint">2. Cole aqui o JSON que ela responder.</p>
+        <textarea id="aiJson" rows="6" spellcheck="false" aria-label="JSON da cena" placeholder='{"objects": [ ... ], "camera": { ... }}'></textarea>
+        <div class="row"><button class="btn primary" id="aiApply">Criar cena com este JSON</button></div>
+      </div>
+    </details>
+  </div>
+</div>
+<input type="file" id="fileImage" accept="image/jpeg,image/png,image/webp" hidden>
 <input type="file" id="fileScene" accept=".json,application/json" hidden>
 <input type="file" id="fileModel" accept=".glb,model/gltf-binary" hidden>
 
@@ -991,7 +1042,156 @@ $('#fileModel').onchange = async e => {
   } catch (err) { console.error(err); toast('Não consegui ler este .glb. Exporte sem compressão Draco e tente de novo.'); }
 };
 
+/* ------------------------------------------- cena a partir de uma imagem */
+const scenePrompt = () => `Você vai transformar a imagem anexa (um render ou uma foto de arquitetura) em uma maquete de blocos 3D simples, que serve de guia para movimento de câmera.
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
+{
+  "objects": [
+    {"type": "box", "name": "Térreo", "pos": [0, 0, 0], "size": [12, 3, 8], "rotY": 0, "color": "#4a4a4d"}
+  ],
+  "camera": {"pos": [-8, 1.6, 20], "target": [0, 3, 0], "focal": 24}
+}
+
+Regras do espaço:
+- Unidade: metros. Eixo Y para cima, chão em y = 0.
+- Coloque o centro do volume principal na origem, com a fachada principal virada para +Z (a câmera fica em z positivo).
+- "pos" é o centro da BASE do objeto: x e z no centro, y na altura em que a base apoia.
+- "size" é [largura em X, altura em Y, profundidade em Z]. "rotY" gira em graus em torno do eixo vertical.
+- "color" é a cor média do material, em hexadecimal.
+
+Tipos disponíveis:
+- "box": bloco. Use para volumes, paredes, lajes, muros, portas, janelas e pisos.
+- "cylinder" e "sphere": pilares e elementos redondos.
+- "ramp": cunha com o lado alto em +X. "roof": telhado de duas águas com a cumeeira ao longo de Z.
+- "tree": árvore, com size = [altura, altura, altura].
+- "person": pessoa, com size = [1.7, 1.7, 1.7].
+- "car": carro com o comprimento em X, com size = [4.4, 4.4, 4.4].
+
+Como modelar:
+1. Estime medidas reais (pé-direito de 3 m, porta de 0,9 x 2,1 m, portão de garagem de 2,5 x 2,2 m, carro de 4,4 m).
+2. Comece pelos volumes grandes do edifício, depois balanços, coberturas e muros.
+3. Portas, janelas e painéis são blocos finos, com 0,12 m de profundidade, encostados na fachada e 3 cm para fora dela, na cor do material (vidro "#8fb6c9", madeira "#c9812f").
+4. Pisos (rua, calçada, gramado, deck, piscina) são blocos baixos. Use alturas um pouco diferentes (0,04 / 0,05 / 0,08) para que não coincidam.
+5. Inclua as árvores, pessoas e carros que aparecem, nas posições aproximadas.
+6. Use entre 15 e 60 objetos, com nomes curtos em português.
+
+Câmera:
+- "camera" reproduz o ponto de vista da imagem: "pos" é onde a câmera está, "target" é o ponto para onde ela olha e "focal" é a lente em mm (equivalente a 35 mm; arquitetura costuma ficar entre 16 e 35).
+- O quadro de saída está em ${state.aspect}.`;
+
+const IMPORT_TYPES = { box: 'box', cube: 'box', block: 'box', wall: 'box', slab: 'box', cylinder: 'cylinder', sphere: 'sphere', ramp: 'ramp', roof: 'roof', tree: 'tree', person: 'person', car: 'car' };
+const vec3 = v => Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every(n => typeof n === 'number' && isFinite(n)) ? v.slice(0, 3).map(r3) : null;
+/* Aceita o JSON simples descrito no prompt (ou uma cena salva) e devolve dados já validados. */
+function normalizeImport(data) {
+  if (typeof data === 'string') {
+    const a = data.search(/[{[]/), b = Math.max(data.lastIndexOf('}'), data.lastIndexOf(']'));
+    if (a < 0 || b <= a) throw new Error('json');
+    data = JSON.parse(data.slice(a, b + 1));
+  }
+  const list = Array.isArray(data) ? data : data?.objects ?? data?.objetos;
+  if (!Array.isArray(list)) throw new Error('json');
+  const objects = [];
+  for (const it of list.slice(0, 400)) {
+    if (!it || typeof it !== 'object') continue;
+    const type = IMPORT_TYPES[String(it.type ?? it.tipo ?? 'box').toLowerCase()] || 'box';
+    const p = vec3(it.pos ?? it.p ?? it.position), size = vec3(it.size ?? it.s ?? it.tamanho);
+    if (!p || !size) continue;
+    const color = String(it.color ?? it.cor ?? '');
+    objects.push({
+      id: uid(), type, name: String(it.name ?? it.nome ?? CATALOG[type].label).slice(0, 60),
+      p, r: vec3(it.r) ?? [0, r3(Number(it.rotY ?? it.rot_y ?? 0) || 0), 0],
+      s: size.map(v => clamp(Math.abs(v), 0.01, 2000)), color: /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : CATALOG[type].color,
+    });
+  }
+  if (!objects.length) throw new Error('vazio');
+  const c = data?.camera, cp = vec3(c?.pos), ct = vec3(c?.target);
+  const camera = cp && ct ? { pos: cp, target: ct, focal: clamp(Number(c.focal) || 24, 12, 120), roll: clamp(Number(c.roll) || 0, -45, 45) } : null;
+  return { objects, camera };
+}
+function applyImport({ objects, camera }) {
+  state.objects = objects; state.keys = camera ? [{ t: 0, ...camera }] : [];
+  commit(); playT = 0; rebuildAll();
+  if (!camera) { // sem câmera: enquadra a cena inteira
+    const d = Math.max(12, bounds.radius * 2.2);
+    cam.position.set(bounds.center.x - d * 0.45, Math.max(1.6, bounds.radius * 0.35), bounds.center.z + d);
+    orbit.target.copy(bounds.center); followShot = false;
+  }
+  toast(`Cena montada com ${objects.length} objetos${camera ? ' e a câmera da imagem no primeiro keyframe' : ''}. Ctrl+Z desfaz.`);
+}
+
+const sampler = window.claude?.use ? window.claude.use('sample').catch(() => null) : Promise.resolve(null);
+let aiFile = null, aiCtl = null, refUrl = null;
+const aiStatus = msg => { $('#aiStatus').textContent = msg; };
+function setReference(on) {
+  const img = $('#refImg');
+  if (on && refUrl) { img.src = refUrl; img.hidden = false; $('#refRow').hidden = false; img.style.opacity = $('#rRef').value / 100; }
+  else { img.hidden = true; img.removeAttribute('src'); $('#refRow').hidden = true; }
+}
+function openAI() { $('#aiPrompt').value = scenePrompt(); aiStatus(''); $('#aiModal').hidden = false; $('#aiChoose').focus(); }
+function closeAI() { aiCtl?.abort(); $('#aiModal').hidden = true; }
+$('#btnAI').onclick = openAI; $('#aiClose').onclick = closeAI;
+$('#aiModal').addEventListener('pointerdown', e => { if (e.target === e.currentTarget) closeAI(); });
+$('#aiChoose').onclick = () => $('#fileImage').click();
+$('#fileImage').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  aiFile = f; if (refUrl) URL.revokeObjectURL(refUrl); refUrl = URL.createObjectURL(f);
+  const thumb = $('#aiThumb'); thumb.hidden = false; thumb.src = refUrl;
+  $('#aiRun').disabled = false; $('#aiChoose').textContent = 'Trocar imagem'; aiStatus('');
+  const probe = new Image();
+  probe.onload = () => { // o quadro passa a usar o formato mais próximo da imagem
+    const a = probe.naturalWidth / probe.naturalHeight;
+    const best = Object.keys(ASPECTS).sort((x, y) => Math.abs(Math.log(ASPECTS[x] / a)) - Math.abs(Math.log(ASPECTS[y] / a)))[0];
+    if (best !== state.aspect) { state.aspect = best; commit(); $('#selAspect').value = best; layout(); }
+    $('#aiPrompt').value = scenePrompt(); setReference($('#aiUseRef').checked);
+  };
+  probe.src = refUrl;
+};
+$('#aiUseRef').onchange = e => setReference(e.target.checked);
+$('#rRef').oninput = e => { $('#refImg').style.opacity = e.target.value / 100; };
+$('#btnRefOff').onclick = () => { $('#aiUseRef').checked = false; setReference(false); };
+const AI_ERR = {
+  not_granted: 'O Claude não foi liberado para esta página. Use a opção de copiar e colar abaixo.',
+  sampling_disabled: 'O Claude não está disponível nesta conta. Use a opção de copiar e colar abaixo.',
+  rate_limited: 'Limite de uso atingido. Tente de novo mais tarde.',
+  session_expired: 'Sua sessão expirou. Entre de novo na conta e tente outra vez.',
+  image_rejected: 'Esta imagem não foi aceita. Use um JPG ou PNG de até 20 MB.',
+  images_unavailable: 'Esta tela não envia imagens para a IA. Use a opção de copiar e colar abaixo.',
+  refused: 'A IA não aceitou esta imagem. Tente com outra.',
+  invalid_json: 'A resposta da IA veio incompleta. Tente de novo.',
+};
+sampler.then(async sample => { // o botão automático só aparece onde a página pode enviar imagens ao Claude
+  const caps = sample ? await sample.limits().catch(() => null) : null;
+  if (caps?.images) { $('#aiAuto').hidden = false; $('#aiManual').open = false; }
+});
+$('#aiRun').onclick = async () => {
+  const sample = await sampler; if (!sample || !aiFile) return;
+  aiCtl = new AbortController();
+  $('#aiRun').disabled = true; $('#aiStop').hidden = false;
+  aiStatus('A IA está analisando a imagem. Costuma levar de 30 segundos a 2 minutos.');
+  try {
+    const data = await sample.json(scenePrompt(), { images: aiFile, modelTier: 'complex', signal: aiCtl.signal,
+      onText: ({ text }) => aiStatus(`A IA está descrevendo a cena (${text.length} caracteres escritos).`) });
+    applyImport(normalizeImport(data)); $('#aiModal').hidden = true;
+  } catch (e) {
+    if (e?.code === 'cancelled') aiStatus('');
+    else if (e instanceof Error) aiStatus('A resposta da IA não tinha objetos que dessem para montar. Tente de novo.');
+    else { aiStatus(AI_ERR[e?.code] || 'A IA não respondeu agora. Tente de novo em instantes.'); if (/copiar e colar/.test($('#aiStatus').textContent)) $('#aiManual').open = true; }
+  } finally { $('#aiRun').disabled = false; $('#aiStop').hidden = true; }
+};
+$('#aiStop').onclick = () => aiCtl?.abort();
+$('#aiCopy').onclick = async () => {
+  const t = $('#aiPrompt');
+  try { await navigator.clipboard.writeText(t.value); aiStatus('Prompt copiado. Envie para a IA junto com a imagem.'); }
+  catch { t.focus(); t.select(); aiStatus('Selecionei o prompt: copie com Ctrl+C.'); }
+};
+$('#aiApply').onclick = () => {
+  try { applyImport(normalizeImport($('#aiJson').value)); $('#aiModal').hidden = true; }
+  catch (e) { aiStatus(e.message === 'vazio' ? 'O JSON não tem objetos com "pos" e "size" válidos.' : 'Não consegui ler este JSON. Cole a resposta inteira da IA, do primeiro { ao último }.'); }
+};
+
 window.addEventListener('keydown', e => {
+  if (!$('#aiModal').hidden) { if (e.key === 'Escape') closeAI(); return; }
   if (e.target.closest('input,select,textarea') || busy) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
